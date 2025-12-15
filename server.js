@@ -12,6 +12,10 @@ app.use(express.static('public'));
 
 const rooms = {}; // roomId -> { game, players: [socket.id], state }
 
+const DRAW_WORDS = [
+  'cat', 'house', 'tree', 'car', 'guitar', 'pizza', 'robot', 'sun', 'dragon', 'bicycle'
+];
+
 function makeRoomId() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
@@ -71,7 +75,12 @@ function checkConnectWinner(board) {
 io.on('connection', socket => {
   socket.on('createRoom', ({ game }) => {
     const roomId = makeRoomId();
-    rooms[roomId] = { game, players: [socket.id], state: game === 'tictactoe' ? newTicTacToe() : newConnectFour() };
+    let state = null;
+    if (game === 'tictactoe') state = newTicTacToe();
+    else if (game === 'connect4') state = newConnectFour();
+    else if (game === 'draw') state = { strokes: [], currentDrawer: null, word: null, guesses: [], roundActive: false };
+    else state = {};
+    rooms[roomId] = { game, players: [socket.id], state };
     socket.join(roomId);
     socket.emit('roomCreated', { roomId });
   });
@@ -79,12 +88,29 @@ io.on('connection', socket => {
   socket.on('joinRoom', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room) return socket.emit('errorMsg', 'Room not found');
-    if (room.players.length >= 2) return socket.emit('errorMsg', 'Room full');
+    const maxPlayers = room.game === 'draw' ? 8 : 2;
+    if (room.players.length >= maxPlayers) return socket.emit('errorMsg', 'Room full');
     room.players.push(socket.id);
     socket.join(roomId);
     // notify both players
     const roles = room.game === 'tictactoe' ? ['X','O'] : ['R','Y'];
     io.to(roomId).emit('start', { game: room.game, roles, players: room.players });
+    // special start for draw game when 2+ players
+    if (room.game === 'draw' && room.players.length >= 2 && !room.state.roundActive) {
+      // pick a drawer randomly
+      const drawerIdx = Math.floor(Math.random() * room.players.length);
+      const drawerId = room.players[drawerIdx];
+      const word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)];
+      room.state.currentDrawer = drawerId;
+      room.state.word = word;
+      room.state.roundActive = true;
+      room.state.strokes = [];
+      room.state.guesses = [];
+      // notify all of round start
+      io.to(roomId).emit('drawRoundStart', { drawerId });
+      // send the word only to the drawer
+      io.to(drawerId).emit('yourWord', { word });
+    }
     io.to(roomId).emit('update', { state: room.state });
   });
 
@@ -108,6 +134,44 @@ io.on('connection', socket => {
       room.state.turn = room.state.turn === 'R' ? 'Y' : 'R';
     }
     io.to(roomId).emit('update', { state: room.state });
+  });
+
+  // Draw It Out: drawing and guessing events
+  socket.on('drawData', ({ roomId, data }) => {
+    const room = rooms[roomId]; if (!room) return;
+    if (!room.state) return;
+    // save strokes for new joiners
+    room.state.strokes = room.state.strokes || [];
+    room.state.strokes.push(data);
+    socket.to(roomId).emit('drawData', data);
+  });
+
+  socket.on('makeGuess', ({ roomId, guess }) => {
+    const room = rooms[roomId]; if (!room) return;
+    room.state.guesses = room.state.guesses || [];
+    room.state.guesses.push({ player: socket.id, text: guess });
+    io.to(roomId).emit('guessMade', { player: socket.id, text: guess });
+    if (room.state.word && guess && guess.trim().toLowerCase() === room.state.word.toLowerCase()) {
+      // round ends
+      room.state.roundActive = false;
+      io.to(roomId).emit('roundEnd', { winner: socket.id, word: room.state.word });
+    }
+  });
+
+  socket.on('newDrawRound', ({ roomId }) => {
+    const room = rooms[roomId]; if (!room) return;
+    if (!room.players || room.players.length === 0) return;
+    const drawerIdx = room.players.indexOf(room.state.currentDrawer);
+    const nextIdx = drawerIdx === -1 ? 0 : (drawerIdx + 1) % room.players.length;
+    const drawerId = room.players[nextIdx];
+    const word = DRAW_WORDS[Math.floor(Math.random() * DRAW_WORDS.length)];
+    room.state.currentDrawer = drawerId;
+    room.state.word = word;
+    room.state.roundActive = true;
+    room.state.strokes = [];
+    room.state.guesses = [];
+    io.to(roomId).emit('drawRoundStart', { drawerId });
+    io.to(drawerId).emit('yourWord', { word });
   });
 
   socket.on('leaveRoom', ({ roomId }) => {

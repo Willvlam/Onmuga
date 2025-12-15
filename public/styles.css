@@ -14,3 +14,12 @@ input,select{padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.0
 .connect4{display:grid;grid-template-columns:repeat(7,64px);gap:6px;padding:6px;background:rgba(0,0,0,0.2);border-radius:6px}
 .slot{width:64px;height:64px;background:rgba(255,255,255,0.03);border-radius:50%;display:flex;align-items:center;justify-content:center}
 .status{margin-top:8px;color:var(--muted)}
+
+/* Draw It Out */
+.drawArea{display:flex;flex-direction:column;align-items:center;gap:8px}
+.canvasWrap{background:rgba(255,255,255,0.02);padding:8px;border-radius:6px}
+canvas{background:white;border-radius:6px;touch-action:none}
+.drawControls{display:flex;gap:8px;align-items:center}
+.guesses{max-height:160px;overflow:auto;width:100%;margin-top:8px}
+.wordBox{padding:6px;background:rgba(255,255,255,0.03);border-radius:6px}
+

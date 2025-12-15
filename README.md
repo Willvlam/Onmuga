@@ -5,6 +5,17 @@ This project includes:
 
 - Tic-Tac-Toe (2 players)
 - Connect Four (2 players)
+- Draw It Out (multiplayer drawing & guessing)
+
+Notes:
+- Draw It Out supports up to **8 players** per room; other games remain 2-player.
+
+How Draw It Out works:
+
+- Create a `Draw It Out` room and share the room code.
+- When at least two players join, one player is chosen as the drawer and shown a secret word.
+- The drawer draws on the canvas while others type guesses; correct guesses end the round.
+- Any player can click `New Round` to rotate the drawer and start a new word.
 
 Run locally:
 
