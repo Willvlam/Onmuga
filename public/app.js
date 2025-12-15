@@ -11,6 +11,7 @@ const gameSection = el('game');
 const gameArea = el('gameArea');
 const roomIdDisplay = el('roomIdDisplay');
 const roleDisplay = el('roleDisplay');
+const drawerDisplay = el('drawerDisplay');
 const gameStatus = el('gameStatus');
 
 el('createBtn').onclick = () => {
@@ -99,6 +100,9 @@ function renderTicTacToe(state) {
     grid.appendChild(c);
   });
   gameArea.appendChild(grid);
+  const replay = document.createElement('button'); replay.textContent = 'Replay';
+  replay.onclick = () => { if (!currentRoom) return; socket.emit('replayGame', { roomId: currentRoom }); };
+  gameArea.appendChild(replay);
   if (winner) {
     gameStatus.textContent = winner === 'draw' ? 'Draw!' : `Winner: ${winner}`;
   } else if (turn) {
@@ -133,6 +137,9 @@ function renderConnect4(state) {
     }
   }
   gameArea.appendChild(grid);
+  const replay = document.createElement('button'); replay.textContent = 'Replay';
+  replay.onclick = () => { if (!currentRoom) return; socket.emit('replayGame', { roomId: currentRoom }); };
+  gameArea.appendChild(replay);
   if (winner) {
     gameStatus.textContent = winner === 'draw' ? 'Draw!' : `Winner: ${winner}`;
   } else if (turn) {
@@ -153,13 +160,24 @@ function renderDraw(state) {
   const clearBtn = document.createElement('button'); clearBtn.textContent = 'Clear';
   controls.appendChild(color); controls.appendChild(size); controls.appendChild(clearBtn);
 
-  const wordBox = document.createElement('div'); wordBox.className = 'wordBox'; wordBox.textContent = 'Word: —';
+  const wordBox = document.createElement('div'); wordBox.className = 'wordBox';
+  // show current drawer from state so UI stays in sync
+  const currentDrawer = state && state.currentDrawer ? state.currentDrawer : null;
+  if (drawerDisplay) drawerDisplay.textContent = currentDrawer ? shortId(currentDrawer) + (currentDrawer === socket.id ? ' (you)' : '') : '—';
+  if (currentDrawer) {
+    wordBox.textContent = currentDrawer === socket.id ? `Word: ${state && state.word ? state.word : '(check your screen)'}` : 'Word: —';
+  } else {
+    wordBox.textContent = 'Word: —';
+  }
   const guessInput = document.createElement('input'); guessInput.placeholder = 'Type a guess and press Enter'; guessInput.style.width = '100%';
   const guesses = document.createElement('div'); guesses.className = 'guesses';
   const newRoundBtn = document.createElement('button'); newRoundBtn.textContent = 'New Round';
 
   wrapper.appendChild(canvasWrap); wrapper.appendChild(controls); wrapper.appendChild(wordBox); wrapper.appendChild(guessInput); wrapper.appendChild(guesses);
   wrapper.appendChild(newRoundBtn);
+  const replayBtn = document.createElement('button'); replayBtn.textContent = 'Replay';
+  replayBtn.onclick = () => { if (!currentRoom) return; socket.emit('replayGame', { roomId: currentRoom }); };
+  wrapper.appendChild(replayBtn);
   gameArea.appendChild(wrapper);
 
   const ctx = canvas.getContext('2d'); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -236,6 +254,8 @@ function renderDraw(state) {
   socket.off('drawRoundStart');
   socket.on('drawRoundStart', ({ drawerId }) => {
     wordBox.textContent = drawerId === socket.id ? 'Word: (check your screen)' : 'Word: —';
+    // update room header drawer
+    if (drawerDisplay) drawerDisplay.textContent = shortId(drawerId) + (drawerId === socket.id ? ' (you)' : '');
     // clear canvas/guesses
     ctx.clearRect(0,0,canvas.width,canvas.height); guesses.innerHTML = '';
   });
@@ -243,6 +263,11 @@ function renderDraw(state) {
   socket.off('roundEnd');
   socket.on('roundEnd', ({ winner, word }) => {
     const d = document.createElement('div'); d.textContent = `Round ended. Word: ${word}. Winner: ${shortId(winner)}`; guesses.appendChild(d);
+  });
+  // show reset notification
+  socket.off('gameReset');
+  socket.on('gameReset', ({ game }) => {
+    const n = document.createElement('div'); n.textContent = `${game} has been reset.`; n.style.marginTop = '6px'; guesses.appendChild(n);
   });
 }
 

@@ -136,6 +136,19 @@ io.on('connection', socket => {
     io.to(roomId).emit('update', { state: room.state });
   });
 
+  socket.on('replayGame', ({ roomId }) => {
+    const room = rooms[roomId]; if (!room) return;
+    if (room.game === 'tictactoe') {
+      room.state = newTicTacToe();
+    } else if (room.game === 'connect4') {
+      room.state = newConnectFour();
+    } else if (room.game === 'draw') {
+      room.state = { strokes: [], currentDrawer: null, word: null, guesses: [], roundActive: false };
+    }
+    io.to(roomId).emit('gameReset', { game: room.game });
+    io.to(roomId).emit('update', { state: room.state });
+  });
+
   // Draw It Out: drawing and guessing events
   socket.on('drawData', ({ roomId, data }) => {
     const room = rooms[roomId]; if (!room) return;
@@ -172,6 +185,8 @@ io.on('connection', socket => {
     room.state.guesses = [];
     io.to(roomId).emit('drawRoundStart', { drawerId });
     io.to(drawerId).emit('yourWord', { word });
+    // ensure all clients receive the updated state (so UI can show new drawer)
+    io.to(roomId).emit('update', { state: room.state });
   });
 
   socket.on('leaveRoom', ({ roomId }) => {

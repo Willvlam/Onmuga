@@ -10,6 +10,10 @@ This project includes:
 Notes:
 - Draw It Out supports up to **8 players** per room; other games remain 2-player.
 
+Replay feature:
+
+- Every game now has a **Replay** button in the UI that resets the current room's game state so you can start a fresh round.
+
 How Draw It Out works:
 
 - Create a `Draw It Out` room and share the room code.
