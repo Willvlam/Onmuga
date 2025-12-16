@@ -180,6 +180,13 @@ io.on('connection', socket => {
     rooms[roomId] = { game, players: [socket.id], state };
     socket.join(roomId);
     socket.emit('roomCreated', { roomId });
+    // also send start/update directly to the creator socket for single-player games
+    if (game === 'tower' || game === 'towerdef') {
+      console.log(`Created single-player room ${roomId} for game ${game}`);
+      socket.emit('start', { game, roles: ['Player'], players: [socket.id] });
+      socket.emit('update', { state });
+      console.log(`Emitted start/update to creator ${socket.id} for room ${roomId}`);
+    }
     // Tower game is single-player, start immediately
     if (game === 'tower') {
       io.to(roomId).emit('start', { game, roles: ['Player'], players: [socket.id] });
