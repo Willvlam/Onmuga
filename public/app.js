@@ -259,142 +259,52 @@ function renderDraw(state) {
     // update room header drawer
     if (drawerDisplay) drawerDisplay.textContent = shortId(drawerId) + (drawerId === socket.id ? ' (you)' : '');
     // clear canvas/guesses
-    ctx.clearRect(0,0,canvas.width,canvas.height); guesses.innerHTML = '';
-  });
+The file is long; we need to replace the rest... (truncated)
 
-  socket.off('roundEnd');
-  socket.on('roundEnd', ({ winner, word }) => {
-    const d = document.createElement('div'); d.textContent = `Round ended. Word: ${word}. Winner: ${shortId(winner)}`; guesses.appendChild(d);
-  });
-  // show reset notification
-  socket.off('gameReset');
-  socket.on('gameReset', ({ game }) => {
-    const n = document.createElement('div'); n.textContent = `${game} has been reset.`; n.style.marginTop = '6px'; guesses.appendChild(n);
-  });
-}
+# public/index.html
+cat > public/index.html <<'PATCH'
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Onmuga — Play with friends</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="container">
+    <h1>Onmuga — Play with friends</h1>
 
-function renderTower(state) {
-  const wrapper = document.createElement('div'); wrapper.className = 'towerArea';
-  const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 500;
-  canvas.className = 'towerCanvas';
-  wrapper.appendChild(canvas);
+    <section id="lobby" class="card">
+      <label for="gameSelect">Select game:</label>
+      <select id="gameSelect">
+        <option value="tictactoe">Tic-Tac-Toe</option>
+        <option value="connect4">Connect Four</option>
+        <option value="draw">Draw It Out</option>
+        <option value="tower">Tower (Single Player)</option>
+        <option value="towerdef">Tower Defense (Single Player)</option>
+      </select>
+      <div class="buttons">
+        <button id="createBtn">Create Room</button>
+        <input id="roomInput" placeholder="Room code" />
+        <button id="joinBtn">Join Room</button>
+      </div>
+      <div id="status" class="status"></div>
+    </section>
 
-  const score = document.createElement('div'); score.className = 'towerScore';
-  const blocks = state ? state.blocks : [];
-  const gameOver = state ? state.gameOver : false;
-  score.textContent = `Blocks: ${blocks.length}`;
-  wrapper.appendChild(score);
+    <section id="game" class="card hidden">
+      <div class="roomHeader">
+        <div>Room: <span id="roomIdDisplay"></span></div>
+        <div>Role: <span id="roleDisplay"></span></div>
+        <div>Drawer: <span id="drawerDisplay">—</span></div>
+        <button id="leaveBtn">Leave</button>
+      </div>
+      <div id="gameArea"></div>
+      <div id="gameStatus" class="status"></div>
+    </section>
+  </main>
 
-  const info = document.createElement('div'); info.className = 'towerInfo';
-  info.textContent = gameOver ? 'Game Over! Click on blocks to stack them.' : 'Click on the moving block to drop it!';
-  wrapper.appendChild(info);
-
-  const replay = document.createElement('button'); replay.textContent = 'Replay';
-  replay.onclick = () => { if (!currentRoom) return; socket.emit('replayGame', { roomId: currentRoom }); };
-  wrapper.appendChild(replay);
-
-  gameArea.appendChild(wrapper);
-
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#34495e';
-  ctx.fillRect(0, 0, 400, 500);
-
-  // draw blocks
-  if (blocks) {
-    blocks.forEach((block, idx) => {
-      ctx.fillStyle = `hsl(${idx * 10}, 70%, 50%)`;
-      ctx.fillRect(block.x, block.y, block.width, 20);
-      ctx.strokeStyle = '#000';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(block.x, block.y, block.width, 20);
-    });
-  }
-
-  // animate moving block at top
-  let blockX = 175;
-  let blockWidth = 50;
-  let direction = 1;
-  let animationId = null;
-
-  function drawMovingBlock() {
-    const imageData = ctx.getImageData(0, 0, 400, 100);
-    ctx.fillStyle = '#34495e';
-    ctx.fillRect(0, 0, 400, 100);
-    ctx.putImageData(imageData, 0, 0);
-
-    ctx.fillStyle = '#e74c3c';
-    ctx.fillRect(blockX, 10, blockWidth, 20);
-    ctx.strokeStyle = '#000';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(blockX, 10, blockWidth, 20);
-
-    blockX += direction * 3;
-    if (blockX <= 0 || blockX + blockWidth >= 400) direction *= -1;
-  }
-
-  function animate() {
-    drawMovingBlock();
-    if (!gameOver) animationId = requestAnimationFrame(animate);
-  }
-
-  if (!gameOver) animate();
-
-  canvas.addEventListener('click', () => {
-    if (animationId) cancelAnimationFrame(animationId);
-    socket.emit('makeMove', { roomId: currentRoom, move: blockX });
-  });
-}
-
-function shortId(id){ return id ? id.slice(0,6) : id; }
-
-function renderTowerDef(state) {
-  const wrapper = document.createElement('div'); wrapper.className = 'towerDefArea';
-  const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 360; canvas.className = 'towerCanvas';
-  wrapper.appendChild(canvas);
-
-  const hud = document.createElement('div'); hud.style.display = 'flex'; hud.style.gap = '12px'; hud.style.alignItems = 'center';
-  const score = document.createElement('div'); score.textContent = `Score: ${state ? state.score : 0}`; hud.appendChild(score);
-  const lives = document.createElement('div'); lives.textContent = `Lives: ${state ? state.lives : 0}`; hud.appendChild(lives);
-  const info = document.createElement('div'); info.style.color = '#94a3b8'; info.textContent = state && state.gameOver ? 'Game Over' : (state && state.running ? 'Wave in progress' : 'Click to place tower'); hud.appendChild(info);
-  const startBtn = document.createElement('button'); startBtn.textContent = 'Start Wave'; startBtn.onclick = ()=>{ if (!currentRoom) return; socket.emit('makeMove', { roomId: currentRoom, move: { type: 'startWave' } }); };
-  hud.appendChild(startBtn);
-  const replayBtn = document.createElement('button'); replayBtn.textContent = 'Replay'; replayBtn.onclick = () => { if (!currentRoom) return; socket.emit('replayGame', { roomId: currentRoom }); };
-  hud.appendChild(replayBtn);
-  wrapper.appendChild(hud);
-
-  gameArea.appendChild(wrapper);
-
-  const ctx = canvas.getContext('2d');
-  function draw() {
-    ctx.fillStyle = '#2d3748'; ctx.fillRect(0,0,canvas.width,canvas.height);
-    // towers
-    if (state && state.towers) {
-      for (const t of state.towers) {
-        ctx.fillStyle = '#60a5fa'; ctx.fillRect(t.x-10, 240, 20, 40);
-        ctx.strokeStyle = '#000'; ctx.strokeRect(t.x-10, 240, 20, 40);
-      }
-    }
-    // enemies
-    if (state && state.enemies) {
-      for (const e of state.enemies) {
-        ctx.fillStyle = '#f97316'; ctx.fillRect(e.x, e.y, 30, 30);
-        ctx.fillStyle = '#fff'; ctx.fillRect(e.x, e.y-6, Math.max(0, 30 * (e.hp / 6)), 4);
-      }
-    }
-    // overlay score/lives
-    score.textContent = `Score: ${state ? state.score : 0}`;
-    lives.textContent = `Lives: ${state ? state.lives : 0}`;
-    info.textContent = state && state.gameOver ? 'Game Over' : (state && state.running ? 'Wave in progress' : 'Click to place tower');
-    requestAnimationFrame(()=>{});
-  }
-
-  canvas.addEventListener('click', (e)=>{
-    if (!currentRoom) return;
-    if (state && state.gameOver) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) * (canvas.width/rect.width));
-    socket.emit('makeMove', { roomId: currentRoom, move: { type: 'place', x: Math.max(10, Math.min(390, Math.round(x))) } });
-  });
-
-  draw();
-}
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

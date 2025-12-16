@@ -27,6 +27,7 @@ function startWave(room) {
   // spawn 5 enemies with varying hp and speed
   const baseX = 0;
   const count = 5 + Math.floor(state.score / 5);
+  state.enemies = state.enemies || [];
   for (let i = 0; i < count; i++) {
     state.enemies.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}`, x: baseX - i * 40, y: 320, hp: 3 + Math.floor(state.score/10), speed: 1 + Math.random()*0.5 });
   }
@@ -37,11 +38,12 @@ function updateRoomState(roomOrId) {
   const room = typeof roomOrId === 'string' ? rooms[roomOrId] : roomOrId;
   if (!room) return;
   const state = room.state; if (!state || state.gameOver) return;
+  // ensure arrays exist
+  state.enemies = state.enemies || [];
+  state.towers = state.towers || [];
 
   // move enemies
-  for (const e of state.enemies) {
-    e.x += e.speed;
-  }
+  for (const e of state.enemies) { e.x += e.speed; }
 
   // towers auto-shoot (simple instantaneous damage and cooldown)
   for (const t of state.towers) {
@@ -50,13 +52,10 @@ function updateRoomState(roomOrId) {
       // find closest enemy in range
       let target = null; let bestDist = Infinity;
       for (const e of state.enemies) {
-        const dist = Math.abs((e.x+25) - t.x);
+        const dist = Math.abs((e.x+15) - t.x);
         if (dist <= t.range && dist < bestDist) { bestDist = dist; target = e; }
       }
-      if (target) {
-        target.hp -= t.damage;
-        t.cooldown = t.rate;
-      }
+      if (target) { target.hp -= t.damage; t.cooldown = t.rate; }
     }
   }
 
@@ -81,7 +80,9 @@ function updateRoomState(roomOrId) {
   // stop running if no enemies remain
   if (state.enemies.length === 0) state.running = false;
 
-  io.to(roomId).emit('update', { state: room.state });
+  // determine roomId for emit
+  let roomId = typeof roomOrId === 'string' ? roomOrId : Object.keys(rooms).find(k => rooms[k] === room);
+  if (roomId) io.to(roomId).emit('update', { state: room.state });
 }
 
 
