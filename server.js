@@ -169,6 +169,7 @@ function addBlock(state, x) {
 
 io.on('connection', socket => {
   socket.on('createRoom', ({ game }) => {
+    console.log(`createRoom requested by ${socket.id}: ${game}`);
     const roomId = makeRoomId();
     let state = null;
     if (game === 'tictactoe') state = newTicTacToe();
@@ -354,6 +355,16 @@ io.on('connection', socket => {
       }
     }
   });
+});
+
+server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Stop the process listening on the port or run with a different PORT environment variable.`);
+    console.error(`Find and kill process: lsof -i :${PORT} --pid -sTCP:LISTEN -t || fuser -k ${PORT}/tcp`);
+    process.exit(1);
+  }
+  console.error('Server error:', err);
+  process.exit(1);
 });
 
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

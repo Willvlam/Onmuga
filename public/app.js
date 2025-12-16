@@ -16,6 +16,7 @@ const gameStatus = el('gameStatus');
 
 el('createBtn').onclick = () => {
   const game = el('gameSelect').value;
+  console.log('createBtn clicked, game=', game);
   socket.emit('createRoom', { game });
   status.textContent = 'Room created, waiting for player to join...';
 };
@@ -38,6 +39,7 @@ el('leaveBtn').onclick = () => {
 };
 
 socket.on('roomCreated', ({ roomId }) => {
+  console.log('roomCreated received', roomId);
   currentRoom = roomId;
   roomIdDisplay.textContent = roomId;
   lobby.classList.add('hidden');
@@ -49,6 +51,7 @@ socket.on('roomCreated', ({ roomId }) => {
 socket.on('errorMsg', msg => { status.textContent = msg; });
 
 socket.on('start', ({ game, roles, players }) => {
+  console.log('start event', { game, roles, players });
   currentGame = game;
   // find my role based on socket id
   const idx = players.indexOf(socket.id);
@@ -60,8 +63,13 @@ socket.on('start', ({ game, roles, players }) => {
 });
 
 socket.on('update', ({ state }) => {
+  console.log('update event', state);
   renderState(state);
 });
+
+socket.on('connect', () => { console.log('socket connected', socket.id); });
+socket.on('connect_error', (err) => { console.error('socket connect_error', err); });
+socket.on('disconnect', (reason) => { console.log('socket disconnected', reason); });
 
 socket.on('playerLeft', () => {
   gameStatus.textContent = 'Other player left the room';
