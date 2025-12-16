@@ -72,6 +72,31 @@ function checkConnectWinner(board) {
   return null;
 }
 
+// Tower game helpers
+function newTower() {
+  return { blocks: [], score: 0, gameOver: false, direction: 1 };
+}
+
+function addBlock(state, x) {
+  const blocks = state.blocks;
+  const newBlock = { x, width: 50, y: 400 - (blocks.length * 20) };
+  if (blocks.length > 0) {
+    const prevBlock = blocks[blocks.length - 1];
+    const overlap = Math.min(prevBlock.x + prevBlock.width, newBlock.x + newBlock.width) - Math.max(prevBlock.x, newBlock.x);
+    if (overlap <= 0) {
+      state.gameOver = true;
+      return { success: false };
+    }
+    newBlock.width = overlap;
+    newBlock.x = Math.max(prevBlock.x, newBlock.x);
+  }
+  blocks.push(newBlock);
+  state.score = blocks.length;
+  if (state.score > 20) state.gameOver = true;
+  return { success: true, block: newBlock };
+}
+
+
 io.on('connection', socket => {
   socket.on('createRoom', ({ game }) => {
     const roomId = makeRoomId();
@@ -79,15 +104,22 @@ io.on('connection', socket => {
     if (game === 'tictactoe') state = newTicTacToe();
     else if (game === 'connect4') state = newConnectFour();
     else if (game === 'draw') state = { strokes: [], currentDrawer: null, word: null, guesses: [], roundActive: false };
+    else if (game === 'tower') state = newTower();
     else state = {};
     rooms[roomId] = { game, players: [socket.id], state };
     socket.join(roomId);
     socket.emit('roomCreated', { roomId });
+    // Tower game is single-player, start immediately
+    if (game === 'tower') {
+      io.to(roomId).emit('start', { game, roles: ['Player'], players: [socket.id] });
+      io.to(roomId).emit('update', { state });
+    }
   });
 
   socket.on('joinRoom', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room) return socket.emit('errorMsg', 'Room not found');
+    if (room.game === 'tower') return socket.emit('errorMsg', 'Tower is a single-player game');
     const maxPlayers = room.game === 'draw' ? 8 : 2;
     if (room.players.length >= maxPlayers) return socket.emit('errorMsg', 'Room full');
     room.players.push(socket.id);
@@ -132,6 +164,11 @@ io.on('connection', socket => {
       if (!pos) return;
       room.state.winner = checkConnectWinner(room.state.board);
       room.state.turn = room.state.turn === 'R' ? 'Y' : 'R';
+    } else if (room.game === 'tower') {
+      const result = addBlock(room.state, move);
+      if (!result.success) {
+        room.state.gameOver = true;
+      }
     }
     io.to(roomId).emit('update', { state: room.state });
   });
@@ -144,6 +181,8 @@ io.on('connection', socket => {
       room.state = newConnectFour();
     } else if (room.game === 'draw') {
       room.state = { strokes: [], currentDrawer: null, word: null, guesses: [], roundActive: false };
+    } else if (room.game === 'tower') {
+      room.state = newTower();
     }
     io.to(roomId).emit('gameReset', { game: room.game });
     io.to(roomId).emit('update', { state: room.state });

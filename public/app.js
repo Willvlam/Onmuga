@@ -81,6 +81,7 @@ function renderState(state) {
   if (currentGame === 'tictactoe') renderTicTacToe(state);
   if (currentGame === 'connect4') renderConnect4(state);
   if (currentGame === 'draw') renderDraw(state);
+  if (currentGame === 'tower') renderTower(state);
 }
 
 function renderTicTacToe(state) {
@@ -268,6 +269,78 @@ function renderDraw(state) {
   socket.off('gameReset');
   socket.on('gameReset', ({ game }) => {
     const n = document.createElement('div'); n.textContent = `${game} has been reset.`; n.style.marginTop = '6px'; guesses.appendChild(n);
+  });
+}
+
+function renderTower(state) {
+  const wrapper = document.createElement('div'); wrapper.className = 'towerArea';
+  const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 500;
+  canvas.className = 'towerCanvas';
+  wrapper.appendChild(canvas);
+
+  const score = document.createElement('div'); score.className = 'towerScore';
+  const blocks = state ? state.blocks : [];
+  const gameOver = state ? state.gameOver : false;
+  score.textContent = `Blocks: ${blocks.length}`;
+  wrapper.appendChild(score);
+
+  const info = document.createElement('div'); info.className = 'towerInfo';
+  info.textContent = gameOver ? 'Game Over! Click on blocks to stack them.' : 'Click on the moving block to drop it!';
+  wrapper.appendChild(info);
+
+  const replay = document.createElement('button'); replay.textContent = 'Replay';
+  replay.onclick = () => { if (!currentRoom) return; socket.emit('replayGame', { roomId: currentRoom }); };
+  wrapper.appendChild(replay);
+
+  gameArea.appendChild(wrapper);
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#34495e';
+  ctx.fillRect(0, 0, 400, 500);
+
+  // draw blocks
+  if (blocks) {
+    blocks.forEach((block, idx) => {
+      ctx.fillStyle = `hsl(${idx * 10}, 70%, 50%)`;
+      ctx.fillRect(block.x, block.y, block.width, 20);
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(block.x, block.y, block.width, 20);
+    });
+  }
+
+  // animate moving block at top
+  let blockX = 175;
+  let blockWidth = 50;
+  let direction = 1;
+  let animationId = null;
+
+  function drawMovingBlock() {
+    const imageData = ctx.getImageData(0, 0, 400, 100);
+    ctx.fillStyle = '#34495e';
+    ctx.fillRect(0, 0, 400, 100);
+    ctx.putImageData(imageData, 0, 0);
+
+    ctx.fillStyle = '#e74c3c';
+    ctx.fillRect(blockX, 10, blockWidth, 20);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(blockX, 10, blockWidth, 20);
+
+    blockX += direction * 3;
+    if (blockX <= 0 || blockX + blockWidth >= 400) direction *= -1;
+  }
+
+  function animate() {
+    drawMovingBlock();
+    if (!gameOver) animationId = requestAnimationFrame(animate);
+  }
+
+  if (!gameOver) animate();
+
+  canvas.addEventListener('click', () => {
+    if (animationId) cancelAnimationFrame(animationId);
+    socket.emit('makeMove', { roomId: currentRoom, move: blockX });
   });
 }
 
