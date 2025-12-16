@@ -16,6 +16,75 @@ const DRAW_WORDS = [
   'cat', 'house', 'tree', 'car', 'guitar', 'pizza', 'robot', 'sun', 'dragon', 'bicycle'
 ];
 
+// Tower Defense helpers
+function newTowerDef() {
+  return { towers: [], enemies: [], score: 0, lives: 10, gameOver: false, running: false };
+}
+
+function startWave(room) {
+  const state = room.state;
+  if (!state || state.gameOver) return;
+  // spawn 5 enemies with varying hp and speed
+  const baseX = 0;
+  const count = 5 + Math.floor(state.score / 5);
+  for (let i = 0; i < count; i++) {
+    state.enemies.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2,6)}`, x: baseX - i * 40, y: 320, hp: 3 + Math.floor(state.score/10), speed: 1 + Math.random()*0.5 });
+  }
+  state.running = true;
+}
+
+function updateRoomState(roomOrId) {
+  const room = typeof roomOrId === 'string' ? rooms[roomOrId] : roomOrId;
+  if (!room) return;
+  const state = room.state; if (!state || state.gameOver) return;
+
+  // move enemies
+  for (const e of state.enemies) {
+    e.x += e.speed;
+  }
+
+  // towers auto-shoot (simple instantaneous damage and cooldown)
+  for (const t of state.towers) {
+    t.cooldown = (t.cooldown || 0) - 1;
+    if (t.cooldown <= 0) {
+      // find closest enemy in range
+      let target = null; let bestDist = Infinity;
+      for (const e of state.enemies) {
+        const dist = Math.abs((e.x+25) - t.x);
+        if (dist <= t.range && dist < bestDist) { bestDist = dist; target = e; }
+      }
+      if (target) {
+        target.hp -= t.damage;
+        t.cooldown = t.rate;
+      }
+    }
+  }
+
+  // remove dead enemies
+  const before = state.enemies.length;
+  state.enemies = state.enemies.filter(e => {
+    if (e.hp <= 0) { state.score += 1; return false; }
+    return true;
+  });
+
+  // enemies reaching end reduce lives
+  const reached = [];
+  state.enemies = state.enemies.filter(e => {
+    if (e.x >= 380) { reached.push(e); return false; }
+    return true;
+  });
+  if (reached.length) {
+    state.lives -= reached.length;
+    if (state.lives <= 0) state.gameOver = true;
+  }
+
+  // stop running if no enemies remain
+  if (state.enemies.length === 0) state.running = false;
+
+  io.to(roomId).emit('update', { state: room.state });
+}
+
+
 function makeRoomId() {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
 }
@@ -105,6 +174,7 @@ io.on('connection', socket => {
     else if (game === 'connect4') state = newConnectFour();
     else if (game === 'draw') state = { strokes: [], currentDrawer: null, word: null, guesses: [], roundActive: false };
     else if (game === 'tower') state = newTower();
+    else if (game === 'towerdef') state = newTowerDef();
     else state = {};
     rooms[roomId] = { game, players: [socket.id], state };
     socket.join(roomId);
@@ -114,12 +184,19 @@ io.on('connection', socket => {
       io.to(roomId).emit('start', { game, roles: ['Player'], players: [socket.id] });
       io.to(roomId).emit('update', { state });
     }
+    if (game === 'towerdef') {
+      io.to(roomId).emit('start', { game, roles: ['Player'], players: [socket.id] });
+      io.to(roomId).emit('update', { state });
+      // start periodic tick for this room
+      rooms[roomId].tick = setInterval(()=> updateRoomState(roomId), 100);
+    }
   });
 
   socket.on('joinRoom', ({ roomId }) => {
     const room = rooms[roomId];
     if (!room) return socket.emit('errorMsg', 'Room not found');
     if (room.game === 'tower') return socket.emit('errorMsg', 'Tower is a single-player game');
+    if (room.game === 'towerdef') return socket.emit('errorMsg', 'Tower Defense is a single-player game');
     const maxPlayers = room.game === 'draw' ? 8 : 2;
     if (room.players.length >= maxPlayers) return socket.emit('errorMsg', 'Room full');
     room.players.push(socket.id);
@@ -169,6 +246,18 @@ io.on('connection', socket => {
       if (!result.success) {
         room.state.gameOver = true;
       }
+    } else if (room.game === 'towerdef') {
+      // move should be an object describing action
+      if (!move || typeof move !== 'object') return;
+      if (move.type === 'place') {
+        const x = move.x;
+        // simple placement: fixed tower params
+        if (room.state.gameOver) return;
+        room.state.towers = room.state.towers || [];
+        room.state.towers.push({ x, range: 80, rate: 10, damage: 1, cooldown: 0 });
+      } else if (move.type === 'startWave') {
+        startWave(room);
+      }
     }
     io.to(roomId).emit('update', { state: room.state });
   });
@@ -183,6 +272,11 @@ io.on('connection', socket => {
       room.state = { strokes: [], currentDrawer: null, word: null, guesses: [], roundActive: false };
     } else if (room.game === 'tower') {
       room.state = newTower();
+    } else if (room.game === 'towerdef') {
+      room.state = newTowerDef();
+      // clear and reattach ticker
+      if (room.tick) clearInterval(room.tick);
+      rooms[roomId].tick = setInterval(()=> updateRoomState(roomId), 100);
     }
     io.to(roomId).emit('gameReset', { game: room.game });
     io.to(roomId).emit('update', { state: room.state });
@@ -234,7 +328,10 @@ io.on('connection', socket => {
     room.players = room.players.filter(id => id !== socket.id);
     socket.leave(roomId);
     io.to(roomId).emit('playerLeft');
-    if (room.players.length === 0) delete rooms[roomId];
+    if (room.players.length === 0) {
+      if (room.tick) clearInterval(room.tick);
+      delete rooms[roomId];
+    }
   });
 
   socket.on('disconnect', () => {
@@ -242,10 +339,20 @@ io.on('connection', socket => {
       if (room.players.includes(socket.id)) {
         room.players = room.players.filter(id => id !== socket.id);
         io.to(roomId).emit('playerLeft');
-        if (room.players.length === 0) delete rooms[roomId];
+        if (room.players.length === 0) {
+          if (room.tick) clearInterval(room.tick);
+          delete rooms[roomId];
+        }
       }
     }
   });
 });
 
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// export helpers for tests
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = Object.assign(module.exports || {}, { newTower, addBlock, newTowerDef, startWave, updateRoomState });
+}
+// expose rooms map for testing
+if (typeof module !== 'undefined' && module.exports) module.exports.rooms = rooms;

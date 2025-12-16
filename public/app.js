@@ -82,6 +82,7 @@ function renderState(state) {
   if (currentGame === 'connect4') renderConnect4(state);
   if (currentGame === 'draw') renderDraw(state);
   if (currentGame === 'tower') renderTower(state);
+  if (currentGame === 'towerdef') renderTowerDef(state);
 }
 
 function renderTicTacToe(state) {
@@ -345,3 +346,55 @@ function renderTower(state) {
 }
 
 function shortId(id){ return id ? id.slice(0,6) : id; }
+
+function renderTowerDef(state) {
+  const wrapper = document.createElement('div'); wrapper.className = 'towerDefArea';
+  const canvas = document.createElement('canvas'); canvas.width = 400; canvas.height = 360; canvas.className = 'towerCanvas';
+  wrapper.appendChild(canvas);
+
+  const hud = document.createElement('div'); hud.style.display = 'flex'; hud.style.gap = '12px'; hud.style.alignItems = 'center';
+  const score = document.createElement('div'); score.textContent = `Score: ${state ? state.score : 0}`; hud.appendChild(score);
+  const lives = document.createElement('div'); lives.textContent = `Lives: ${state ? state.lives : 0}`; hud.appendChild(lives);
+  const info = document.createElement('div'); info.style.color = '#94a3b8'; info.textContent = state && state.gameOver ? 'Game Over' : (state && state.running ? 'Wave in progress' : 'Click to place tower'); hud.appendChild(info);
+  const startBtn = document.createElement('button'); startBtn.textContent = 'Start Wave'; startBtn.onclick = ()=>{ if (!currentRoom) return; socket.emit('makeMove', { roomId: currentRoom, move: { type: 'startWave' } }); };
+  hud.appendChild(startBtn);
+  const replayBtn = document.createElement('button'); replayBtn.textContent = 'Replay'; replayBtn.onclick = () => { if (!currentRoom) return; socket.emit('replayGame', { roomId: currentRoom }); };
+  hud.appendChild(replayBtn);
+  wrapper.appendChild(hud);
+
+  gameArea.appendChild(wrapper);
+
+  const ctx = canvas.getContext('2d');
+  function draw() {
+    ctx.fillStyle = '#2d3748'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    // towers
+    if (state && state.towers) {
+      for (const t of state.towers) {
+        ctx.fillStyle = '#60a5fa'; ctx.fillRect(t.x-10, 240, 20, 40);
+        ctx.strokeStyle = '#000'; ctx.strokeRect(t.x-10, 240, 20, 40);
+      }
+    }
+    // enemies
+    if (state && state.enemies) {
+      for (const e of state.enemies) {
+        ctx.fillStyle = '#f97316'; ctx.fillRect(e.x, e.y, 30, 30);
+        ctx.fillStyle = '#fff'; ctx.fillRect(e.x, e.y-6, Math.max(0, 30 * (e.hp / 6)), 4);
+      }
+    }
+    // overlay score/lives
+    score.textContent = `Score: ${state ? state.score : 0}`;
+    lives.textContent = `Lives: ${state ? state.lives : 0}`;
+    info.textContent = state && state.gameOver ? 'Game Over' : (state && state.running ? 'Wave in progress' : 'Click to place tower');
+    requestAnimationFrame(()=>{});
+  }
+
+  canvas.addEventListener('click', (e)=>{
+    if (!currentRoom) return;
+    if (state && state.gameOver) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) * (canvas.width/rect.width));
+    socket.emit('makeMove', { roomId: currentRoom, move: { type: 'place', x: Math.max(10, Math.min(390, Math.round(x))) } });
+  });
+
+  draw();
+}
